@@ -2,7 +2,7 @@
 
 Firmware for an **M5StickC Plus 1.1** that shows the hot water temperature from a local JSON endpoint. The endpoint is provided by EBUSD which reads the data from a Vaillant boiler (see `https://github.com/congoblue/ebuslogger`).
 
-!(Hot Water Temperature Display)[/pic.jpg]
+![Hot Water Temperature Display](/pic.jpg)
 
 The purpose of this is to have a small display in the bathroom for shower users so they can see when the stored hot water is about to run out!
 

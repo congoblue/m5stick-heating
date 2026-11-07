@@ -86,7 +86,7 @@ static void drawScreen() {
   M5.Display.setTextDatum(TC_DATUM);
   M5.Display.setFont(&fonts::Font2);
   M5.Display.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-  M5.Display.drawString("Hot Water", 120, 2);
+  M5.Display.drawString("Hot Water Temperature", 120, 2);
 
   // 7-segment font at double size (96 px tall); fall back to normal size if too wide
   M5.Display.setFont(&fonts::Font7);
