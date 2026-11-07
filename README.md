@@ -8,12 +8,12 @@ The purpose of this is to have a small display in the bathroom for shower users 
 
 ## Features
 
-- Connects to WiFi and fetches `http://192.168.1.240:8080/data` every 10 seconds
+- Connects to WiFi and fetches json from local endpoint every 10 seconds
 - Displays `v65.messages.State.fields.temp.value` in a large 7-segment font
 - Temperature colour shifts from blue (10°C and below) through cyan, green and yellow to red (42°C and above)
 - Battery icon in the top-right: green above 25%, yellow 10–25%, red below 10%
 - Status line with a countdown to sleep (bottom left)
-- "HEATING" shown in red (bottom right) while the boiler state is `water` (heating the hot water)
+- "HEATING" shown in red (bottom right) while `v65.messages.State.fields.state.value` is `water` (heating the hot water)
 - Stays awake for 10 minutes, then deep-sleeps to save battery
 - Press large M5 button to wake from sleep, or to extend sleep timer when awake. Hold M5 button to sleep.
 
