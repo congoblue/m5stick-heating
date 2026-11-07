@@ -14,7 +14,8 @@ The purpose of this is to have a small display in the bathroom for shower users 
 - Battery icon in the top-right: green above 25%, yellow 10–25%, red below 10%
 - Status line with a countdown to sleep (bottom left)
 - "HEATING" shown in red (bottom right) while `v65.messages.State.fields.state.value` is `water` (heating the hot water)
-- Stays awake for 10 minutes, then deep-sleeps to save battery
+- Stays awake for 10 minutes on battery, then deep-sleeps to save battery
+- On USB power: no auto-sleep (countdown hidden), red LED on while charging and off when fully charged, lightning bolt on the battery icon while charging
 - Press large M5 button to wake from sleep, or to extend sleep timer when awake. Hold M5 button to sleep.
 
 ## Controls
