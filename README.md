@@ -1,6 +1,6 @@
 # M5Stick Heating Display
 
-Firmware for an **M5StickC Plus 1.1** that shows the hot water temperature from a local JSON endpoint. The endpoint is provided by EBUSD which reads the data from a Vaillant boiler (see `https://github.com/congoblue/ebuslogger`).
+Firmware for an **M5StickC Plus 1.1** that shows the hot water temperature from a local JSON endpoint. The endpoint is provided by EBUSD which reads the data from a Vaillant boiler (see [my EBUS logging project](https://github.com/congoblue/ebuslogger)).
 
 ![Hot Water Temperature Display](/pic.jpg)
 
