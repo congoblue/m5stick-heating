@@ -10,16 +10,18 @@ The purpose of this is to have a small display in the bathroom for shower users 
 
 - Connects to WiFi and fetches `http://192.168.1.240:8080/data` every 10 seconds
 - Displays `v65.messages.State.fields.temp.value` in a large 7-segment font
-- Temperature colour shifts from cyan (20°C and below) through green and yellow to red (45°C and above)
+- Temperature colour shifts from blue (10°C and below) through cyan, green and yellow to red (42°C and above)
 - Battery icon in the top-right: green above 25%, yellow 10–25%, red below 10%
-- Status line with a countdown to sleep
+- Status line with a countdown to sleep (bottom left)
+- "HEATING" shown in red (bottom right) while the boiler state is `water` (heating the hot water)
 - Stays awake for 10 minutes, then deep-sleeps to save battery
+- Press large M5 button to wake from sleep, or to extend sleep timer when awake. Hold M5 button to sleep.
 
 ## Controls
 
 | Button | Action |
 |---|---|
-| Large front button (M5) | Wake from sleep / go to sleep |
+| Large front button (M5) | Wake from sleep; short press resets the 10-minute sleep timer; hold 2 s to sleep |
 | Small side button | Step through backlight brightness (remembered across sleep) |
 
 ## Setup
@@ -46,7 +48,7 @@ Settings in `src/main.cpp`:
 | `UPDATE_INTERVAL_MS` | 10 s | How often the temperature is fetched |
 | `AWAKE_TIME_MS` | 10 min | Time before automatic sleep |
 | `BRIGHTNESS_LEVELS` | 32, 80, 128, 192, 255 | Backlight steps (0–255) |
-| `tHot` / `tCold` in `tempColour()` | 45°C / 20°C | Colour scale limits |
+| `tHot` / `tCold` in `tempColour()` | 42°C / 10°C | Colour scale limits |
 
 ## Status messages
 

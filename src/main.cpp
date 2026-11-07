@@ -25,22 +25,24 @@ static uint32_t lastSecondMs = 0;
 static String lastTemp = "--";
 static float lastTempValue = NAN;  // numeric value for colouring (NAN if unknown)
 static String lastStatus = "";
+static bool heating = false;  // boiler state == "Water" (heating the hot water)
 
-// Temperature colour: red at >=45C, cyan at <=20C, sweeping the hue
-// (red -> orange -> yellow -> green -> cyan) in between.
+// Temperature colour: red at >=tHot, blue at <=tCold, sweeping the hue
+// (red -> orange -> yellow -> green -> cyan -> blue) in between.
 static uint16_t tempColour(float t) {
   if (isnan(t)) return TFT_WHITE;
-  const float tHot = 45.0f, tCold = 20.0f;
+  const float tHot = 42.0f, tCold = 10.0f;
   float f = (tHot - t) / (tHot - tCold);  // 0 at hot, 1 at cold
   f = constrain(f, 0.0f, 1.0f);
-  float hue = f * 180.0f;                 // 0 = red, 180 = cyan
+  float hue = f * 240.0f;                 // 0 = red, 180 = cyan, 240 = blue
 
-  // HSV -> RGB with S = V = 1, for hue in [0, 180]
+  // HSV -> RGB with S = V = 1, for hue in [0, 240]
   float x = 1.0f - fabsf(fmodf(hue / 60.0f, 2.0f) - 1.0f);
   float r, g, b;
   if (hue < 60)       { r = 1; g = x; b = 0; }
   else if (hue < 120) { r = x; g = 1; b = 0; }
-  else                { r = 0; g = 1; b = x; }
+  else if (hue < 180) { r = 0; g = 1; b = x; }
+  else                { r = 0; g = x; b = 1; }
   return M5.Display.color565((uint8_t)(r * 255), (uint8_t)(g * 255), (uint8_t)(b * 255));
 }
 
@@ -71,12 +73,21 @@ static void drawFooter() {
   char buf[48];
   snprintf(buf, sizeof(buf), "%s  sleep %lu:%02lu", lastStatus.c_str(),
            (unsigned long)(remain / 60), (unsigned long)(remain % 60));
-  M5.Display.setTextDatum(BC_DATUM);
+  M5.Display.setTextDatum(BL_DATUM);  // bottom-left; bottom-right is the HEATING label
   M5.Display.setFont(&fonts::Font2);
   M5.Display.setTextColor(TFT_DARKGREY, TFT_BLACK);
-  M5.Display.setTextPadding(240);  // clear old text without flicker
-  M5.Display.drawString(buf, 120, 133);
+  M5.Display.setTextPadding(165);  // clear old text without flicker
+  M5.Display.drawString(buf, 2, 133);
   M5.Display.setTextPadding(0);
+}
+
+// "HEATING" in the bottom-right corner while the boiler is heating the hot water.
+static void drawHeating() {
+  if (!heating) return;
+  M5.Display.setTextDatum(BR_DATUM);
+  M5.Display.setFont(&fonts::Font2);
+  M5.Display.setTextColor(TFT_RED, TFT_BLACK);
+  M5.Display.drawString("HEATING", 238, 133);
 }
 
 static void drawScreen() {
@@ -99,6 +110,7 @@ static void drawScreen() {
 
   drawBattery();
   drawFooter();
+  drawHeating();
   M5.Display.endWrite();
 }
 
@@ -139,7 +151,10 @@ static void fetchTemperature() {
     return;
   }
 
-  JsonVariant v = doc["v65"]["messages"]["State"]["fields"]["temp"]["value"];
+  JsonVariant fields = doc["v65"]["messages"]["State"]["fields"];
+  heating = (fields["state"]["value"] == "water");
+
+  JsonVariant v = fields["temp"]["value"];
   if (v.isNull()) {
     lastStatus = "No temp";
     return;
@@ -188,6 +203,7 @@ void setup() {
 
   // If woken by button A, wait for release so it isn't seen as a "sleep" press
   while (digitalRead(WAKE_PIN) == LOW) delay(10);
+  M5.BtnA.setHoldThresh(2000);  // long press (2 s) on button A = sleep
   M5.update();
 
   bootMs = millis();
@@ -211,9 +227,12 @@ void loop() {
     goToSleep();
   }
 
-  // Big button (A): go to sleep now
-  if (M5.BtnA.wasPressed()) {
+  // Big button (A): hold 2 s to sleep, short press resets the sleep timer
+  if (M5.BtnA.wasHold()) {
     goToSleep();
+  } else if (M5.BtnA.wasClicked()) {
+    bootMs = now;
+    drawFooter();
   }
 
   // Small side button (B): step through backlight brightness
