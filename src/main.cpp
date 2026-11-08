@@ -223,6 +223,18 @@ static void goToSleep() {
   // Wait for button release so we don't immediately wake
   while (digitalRead(WAKE_PIN) == LOW) delay(10);
 
+  // Cut power to everything except the ESP32 (DCDC1) to minimise sleep current.
+  // M5.begin() restores these on wake.
+  M5.Imu.sleep();                     // MPU6886 IMU (~3 mA when active)
+  M5.Display.sleep();                 // ST7789 into sleep before its supply is cut
+  auto &axp = M5.Power.Axp192;
+  axp.setLDO2(0);                     // LCD backlight
+  axp.setLDO3(0);                     // LCD logic power
+  axp.setLDO0(0);                     // microphone
+  axp.setGPIO0(false);
+  axp.setEXTEN(false);                // 5V boost for HAT / Grove
+  axp.setAdcState(false);             // AXP192 measurement ADCs
+
   // Wake on button A. M5Unified's own wake pin is disabled (touch_wakeup = false)
   // because the ESP32 has only one ext0 source; deepSleep() also puts the LCD to sleep.
   esp_sleep_enable_ext0_wakeup(WAKE_PIN, 0);
