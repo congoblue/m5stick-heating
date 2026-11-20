@@ -1,8 +1,10 @@
 // M5StickC Plus 1.1 - heating temperature display
 // Polls a JSON endpoint every 10 s, shows the temperature,
-// stays awake for 10 minutes then deep-sleeps until button A (big M5 button) is pressed.
+// stays on for 10 minutes (or until button A is pressed) then powers off fully.
+// Turn back on with the side power button.
 
 #include <M5Unified.h>
+#include <Preferences.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
@@ -12,13 +14,14 @@ static const char *DATA_URL  = "http://192.168.1.240:8080/data";
 
 static const uint32_t UPDATE_INTERVAL_MS = 10UL * 1000UL;       // 10 seconds
 static const uint32_t AWAKE_TIME_MS      = 10UL * 60UL * 1000UL; // 10 minutes
-static const gpio_num_t WAKE_PIN         = GPIO_NUM_37;          // Button A (big front button)
+static const gpio_num_t BTN_A_PIN        = GPIO_NUM_37;          // Button A (big front button)
 static const int LED_PIN                 = 10;                   // red LED, active LOW
 
 // Backlight brightness levels (0-255) cycled with button B (small side button).
 static const uint8_t BRIGHTNESS_LEVELS[] = {32, 80, 128, 192, 255};
 static const int NUM_BRIGHTNESS = sizeof(BRIGHTNESS_LEVELS) / sizeof(BRIGHTNESS_LEVELS[0]);
-RTC_DATA_ATTR static int brightnessIdx = 2;  // kept across deep sleep
+static int brightnessIdx = 2;  // saved to flash (NVS) so it survives power-off
+static Preferences prefs;
 
 static uint32_t bootMs = 0;
 static uint32_t lastUpdateMs = 0;
@@ -104,7 +107,7 @@ static void drawFooter() {
   } else {
     uint32_t elapsed = millis() - bootMs;
     uint32_t remain = elapsed < AWAKE_TIME_MS ? (AWAKE_TIME_MS - elapsed) / 1000 : 0;
-    snprintf(buf, sizeof(buf), "%s  sleep %lu:%02lu", lastStatus.c_str(),
+    snprintf(buf, sizeof(buf), "%s  off %lu:%02lu",lastStatus.c_str(),
              (unsigned long)(remain / 60), (unsigned long)(remain % 60));
   }
   M5.Display.setTextDatum(BL_DATUM);  // bottom-left; bottom-right is the HEATING label
@@ -118,10 +121,13 @@ static void drawFooter() {
 // "HEATING" in the bottom-right corner while the boiler is heating the hot water.
 static void drawHeating() {
   if (!heating) return;
-  M5.Display.setTextDatum(BR_DATUM);
   M5.Display.setFont(&fonts::Font2);
-  M5.Display.setTextColor(TFT_RED, TFT_BLACK);
-  M5.Display.drawString("HEATING", 238, 133);
+  const int w = M5.Display.textWidth("HEATING") + 8, h = 18;
+  const int x = 240 - w, y = 135 - h;  // bottom-right corner
+  M5.Display.fillRect(x, y, w, h, TFT_RED);
+  M5.Display.setTextDatum(MC_DATUM);
+  M5.Display.setTextColor(TFT_BLACK, TFT_RED);
+  M5.Display.drawString("HEATING", x + w / 2, y + h / 2 + 1);
 }
 
 static void drawScreen() {
@@ -206,39 +212,25 @@ static void fetchTemperature() {
   Serial.printf("temp = %s\n", lastTemp.c_str());
 }
 
-static void goToSleep() {
+// Full power-off via the AXP192 (all rails cut, ESP32 included).
+// Turn back on with the side power button. On USB power the AXP192 restarts the unit.
+static void powerOff() {
   M5.Display.fillScreen(TFT_BLACK);
   M5.Display.setTextDatum(MC_DATUM);
   M5.Display.setFont(&fonts::Font4);
   M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
-  M5.Display.drawString("Sleeping...", 120, 67);
+  M5.Display.drawString("Powering off...", 120, 67);
   delay(1000);
 
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
   digitalWrite(LED_PIN, HIGH);  // LED off
-
   M5.Display.setBrightness(0);
 
-  // Wait for button release so we don't immediately wake
-  while (digitalRead(WAKE_PIN) == LOW) delay(10);
+  // Wait for button release before cutting power
+  while (digitalRead(BTN_A_PIN) == LOW) delay(10);
 
-  // Cut power to everything except the ESP32 (DCDC1) to minimise sleep current.
-  // M5.begin() restores these on wake.
-  M5.Imu.sleep();                     // MPU6886 IMU (~3 mA when active)
-  M5.Display.sleep();                 // ST7789 into sleep before its supply is cut
-  auto &axp = M5.Power.Axp192;
-  axp.setLDO2(0);                     // LCD backlight
-  axp.setLDO3(0);                     // LCD logic power
-  axp.setLDO0(0);                     // microphone
-  axp.setGPIO0(false);
-  axp.setEXTEN(false);                // 5V boost for HAT / Grove
-  axp.setAdcState(false);             // AXP192 measurement ADCs
-
-  // Wake on button A. M5Unified's own wake pin is disabled (touch_wakeup = false)
-  // because the ESP32 has only one ext0 source; deepSleep() also puts the LCD to sleep.
-  esp_sleep_enable_ext0_wakeup(WAKE_PIN, 0);
-  M5.Power.deepSleep(M5.Power.sleep_no_timer, false);
+  M5.Power.powerOff();
 }
 
 void setup() {
@@ -246,15 +238,17 @@ void setup() {
   cfg.serial_baudrate = 115200;
   M5.begin(cfg);
   M5.Display.setRotation(3);  // landscape, button on the left
+
+  prefs.begin("display", false);
+  brightnessIdx = constrain(prefs.getInt("bright", 2), 0, NUM_BRIGHTNESS - 1);
   M5.Display.setBrightness(BRIGHTNESS_LEVELS[brightnessIdx]);
 
   pinMode(LED_PIN, OUTPUT);
   powerState = readPowerState();
   updateLed();
 
-  // If woken by button A, wait for release so it isn't seen as a "sleep" press
-  while (digitalRead(WAKE_PIN) == LOW) delay(10);
-  M5.BtnA.setHoldThresh(2000);  // long press (2 s) on button A = sleep
+  // If button A is held at power-on, wait for release so it isn't seen as a "power off" press
+  while (digitalRead(BTN_A_PIN) == LOW) delay(10);
   M5.update();
 
   bootMs = millis();
@@ -274,25 +268,23 @@ void loop() {
   M5.update();
   uint32_t now = millis();
 
-  // On USB power (charging or charged) the sleep timer is held at zero
+  // On USB power (charging or charged) the power-off timer is held at zero
   if (powerState != ON_BATTERY) {
     bootMs = now;
   } else if (now - bootMs >= AWAKE_TIME_MS) {
-    goToSleep();
+    powerOff();
   }
 
-  // Big button (A): hold 2 s to sleep, short press resets the sleep timer
-  if (M5.BtnA.wasHold()) {
-    goToSleep();
-  } else if (M5.BtnA.wasClicked()) {
-    bootMs = now;
-    drawFooter();
+  // Big button (A): fully power off the unit
+  if (M5.BtnA.wasPressed()) {
+    powerOff();
   }
 
   // Small side button (B): step through backlight brightness
   if (M5.BtnB.wasPressed()) {
     brightnessIdx = (brightnessIdx + 1) % NUM_BRIGHTNESS;
     M5.Display.setBrightness(BRIGHTNESS_LEVELS[brightnessIdx]);
+    prefs.putInt("bright", brightnessIdx);
   }
 
   if (now - lastUpdateMs >= UPDATE_INTERVAL_MS) {
